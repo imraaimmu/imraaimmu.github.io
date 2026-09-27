@@ -84,6 +84,14 @@ const NOTES = [
   },
 ];
 
+const REDIS_RESULTS = [
+  { m: 'Peak memory usage', before: '100% — OOM crash loop', after: '~22–25% stable' },
+  { m: 'Swap paging on reader nodes', before: '>22 MB', after: '0 MB' },
+  { m: 'Memory fragmentation ratio', before: '>2.2 and spiking', after: '1.05 – 1.15' },
+  { m: 'Cache hit rate', before: '0 – 30%, volatile', after: '>85%, stable' },
+  { m: 'Unscheduled downtime', before: 'Daily OOM restarts', after: 'None' },
+];
+
 export default function Home() {
   return (
     <>
@@ -140,7 +148,7 @@ export default function Home() {
       <section id="work">
         <div className="wrap">
           <div className="eyebrow">01 — Selected work</div>
-          <h2>Three systems, three different hard problems.</h2>
+          <h2>Four systems, four different hard problems.</h2>
           <p className="lede">
             Client engagements are described without internal system names. The platform I own is
             documented in full.
@@ -181,6 +189,70 @@ export default function Home() {
               </li>
             </ul>
             <IdempotencyDemo />
+          </div>
+
+          <div className="case">
+            <div className="tags">
+              <span className="tag">Redis</span>
+              <span className="tag">Spring Data Redis</span>
+              <span className="tag">AWS ElastiCache</span>
+              <span className="tag">Terraform</span>
+              <span className="tag">CloudWatch</span>
+            </div>
+            <h3>Finding a framework-level memory leak two previous attempts had missed</h3>
+            <div className="meta">Large US omnichannel retailer · via consultancy · 2025–2026</div>
+            <ul>
+              <li>
+                A production ElastiCache for Redis cluster was hitting 100% memory daily, paging to
+                disk on reader nodes and collapsing to a 0% hit rate, which dumped the load straight
+                onto the primary database. Two earlier efforts had not found the cause.
+              </li>
+              <li>
+                <b>The diagnosis was a chain of four commands.</b> Non-blocking <code>SCAN</code> from
+                a bastion host surfaced container keys with a TTL of <code>-1</code>;{' '}
+                <code>TYPE</code> showed they were Sets; <code>SCARD</code> showed millions of
+                members; and <code>EXISTS</code> on a random member returned <code>0</code>. The
+                entities had expired. Their IDs had not.
+              </li>
+              <li>
+                <b>Spring Data Redis never purges its own secondary indexes.</b> When a{' '}
+                <code>@RedisHash</code> entity expires natively inside Redis, the framework leaves
+                the ID behind in the index Set. Millions of orphaned references accumulated into an
+                unbounded leak that no application code owned.
+              </li>
+              <li>
+                <b>The fix had to not be the outage.</b> Deleting members with{' '}
+                <code>SMEMBERS</code> or <code>KEYS</code> is O(N) on a single-threaded server, so
+                cleanup ran as cursor-based <code>SSCAN</code> in 500-key batches with pipelined
+                existence checks and pipelined <code>SREM</code>. Keyspaces are discovered by
+                scanning the Spring context for <code>@RedisHash</code> repositories rather than
+                hardcoded, so a new cache is covered the day it ships.
+              </li>
+              <li>
+                <b>Purging millions of keys then fragments the heap.</b> Reclaiming the memory needed{' '}
+                <code>activedefrag</code> and a tuned <code>maxmemory-policy</code> applied through a
+                Terraform-managed ElastiCache parameter group — no cluster restart.
+              </li>
+              <li>
+                <b>Three tiers, because one is a single point of failure.</b> A nightly preventative
+                job, a CloudWatch and SNS alarm at 80% memory, and an authenticated admin endpoint so
+                an on-call engineer can force a cleanup mid-incident.
+              </li>
+            </ul>
+            <div className="ba">
+              <div className="ba-row ba-head">
+                <div>Metric</div>
+                <div>Before</div>
+                <div>After</div>
+              </div>
+              {REDIS_RESULTS.map((r) => (
+                <div className="ba-row" key={r.m}>
+                  <div className="m">{r.m}</div>
+                  <div className="before">{r.before}</div>
+                  <div className="after">{r.after}</div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="case">
