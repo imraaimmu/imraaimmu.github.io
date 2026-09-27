@@ -215,10 +215,12 @@ export default function Home() {
                 entities had expired. Their IDs had not.
               </li>
               <li>
-                <b>Spring Data Redis never purges its own secondary indexes.</b> When a{' '}
-                <code>@RedisHash</code> entity expires natively inside Redis, the framework leaves
-                the ID behind in the index Set. Millions of orphaned references accumulated into an
-                unbounded leak that no application code owned.
+                <b>The framework only cleans those indexes if it hears about the expiry.</b> Spring
+                Data Redis removes an ID from its secondary index when its key-expiration listener
+                fires, and that listener depends on Redis keyspace notifications. Managed Redis
+                leaves those off. So <code>@RedisHash</code> entities expired silently and their IDs
+                stayed behind — millions of orphaned references, an unbounded leak that no
+                application code owned.
               </li>
               <li>
                 <b>The fix had to not be the outage.</b> Deleting members with{' '}
